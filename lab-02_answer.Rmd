@@ -85,7 +85,7 @@ library(modelsummary)
 1. Load the data. The data is stored as a Stata dataset, so it can be loaded with the `read_dta()` function from `haven`.
 
 ```{r}
-# Write your answer here
+data <- read_dta("data/sasp_panel.dta")
 ```
 
 
@@ -97,7 +97,7 @@ library(modelsummary)
 Write a short command to drop any rows which have missing values from the data.
 
 ```{r}
-# Write your answer here
+sasp <- data %>% drop_na
 ```
 
 
@@ -109,7 +109,15 @@ Your plot should therefore have two histograms, potentially overlaying each othe
 Does there appear to be a difference in price between safe and unsafe sex?
 
 ```{r}
-# Write your answer here
+sasp %>%
+ggplot(aes(x = lnw, fill = factor(unsafe))) +
+# i plot proportions, you don't need to
+geom_histogram(aes(y = stat(count / sum(count))), alpha=0.6) +
+scale_fill_manual(values=c("#69b3a2", "#404080")) +
+ylab("Fraction of Bookings") +
+xlab("Log Hourly Wage") +
+theme_bw()
+
 ```
 
 4. Let's formalize this idea with a regression.
@@ -117,19 +125,25 @@ Run a single variable regression of log hourly wage, `lnw` on the variable `unsa
 Report the results.
 
 ```{r}
-# Write your answer here
+model1 <- lm(lnw ~ unsafe, data = sasp)
+summary(model1)
 ```
 
 
 5. Interpret the coefficient on `unsafe`.
 Is it statistically significant?
 
-Write your answer here
+On average the coefficient tells us that an increase in unsafe sex will decrease the log hourly wage with 0.035, this means a decrease of 3.5% although this effect is not statistically significant.
+
 
 6. A single variable regression most likely suffers from omitted variable bias. 
 Explain what omitted variable bias is, and why it might impact your regression estimates.
 
-Write your answer here
+Omitted Variable Bias: the effect of leaving out one or more relevant variables on the regression
+coefficients in the “misspecified” regression.
+Meaning the estimated coefficient cannot accurately estimate the true population parameter,
+and thus can’t be interpreted causally.
+
 
 
 7. Add the log of the length of the session, `llength`, as a second variable to your regression.
@@ -137,33 +151,42 @@ Report the results.
 Did the coefficient on `unsafe` change?
 
 ```{r}
-# Write your answer here
+model2 <- lm(lnw ~ unsafe + llength, data = sasp)
+summary(model2)
 ```
 
 
 8. Explain why ignoring `llength` in your regression led to the coefficient on `unsafe` to be different in sign in the single variable regression than in the two variable regression.
 
-Write your answer here
+Negative plus negative (in the form of llength) seems to be positive
 
 9.  Add a third variable to the regression, whether the client is a regular or not (`reg` in the data).
 Report your results and comment on any change in the regression estimate of `unsafe`.
 
 ```{r}
-# Write your answer here
+model3 <- lm(lnw ~ unsafe + llength + reg, data = sasp)
+summary(model3)
 ```
 
 
 10. When discussing your interim results with a friend who is a bit of a statistical whiz they make the following remark: "I think you're not getting the expected results due to unobserved heterogeneity. Try adding fixed effects for each provider."
 What is unobserved heterogeneity? Why might it matter?
 
-Write your answer here
+Unobserved heterogeneity: unmeasured (typically time invariant) differences between (in this case)
+providers.
+Any variable about the provider so far has not been included, and there might be
+something about them that influences the prices they charge and their willingness to engage in unsafe
+sex.
+
+
 
 11. The data has a unique identifier for each provider in the `id` column.
 Use the `feols()` command from the `fixest` package to re-estimate your regression in (9) adding the provider ID fixed effects.
 Report your results with 'normal' standard errors (i.e. no clustering).
 
 ```{r}
-# Write your answer here
+model4 <- feols(lnw ~ unsafe + reg + llength | id, data = sasp)
+tidy(model4, se = 'standard', conf.int = TRUE)
 ```
 
 
@@ -171,7 +194,7 @@ Report your results with 'normal' standard errors (i.e. no clustering).
 Is the coefficient on `unsafe` now statistically significant?
 Is the coefficient large from a 'marketing' viewpoint?
 
-Write your answer here
+Unsafe is now statistically significant with an alpha of 0.1 but not with 0.05. The coefficient entails that an increase in unsafe sex will increase log hourly wage with 0.0477, or 4.8%. This is not very much.
 
 Your next concern should be the standard errors - and whether we have 'correctly' adjusted for heteroskedasticity and/or clustering.
 
@@ -183,7 +206,14 @@ Does there appear to be evidence of heteroskedasticity?
 
 
 ```{r}
-# Write your answer here
+sasp <- sasp %>%
+mutate(resid = residuals(model4),
+fitted = predict(model4))
+
+sasp %>%
+ggplot(aes(x = fitted, y = resid)) + geom_point() + geom_smooth () +
+ggtitle("Not much evidence of heteroskedasticity")
+
 ```
 
 
@@ -193,7 +223,8 @@ Does the standard error on `unsafe` change by much?
 Is this consistent with what you found graphically above?
 
 ```{r}
-# Write your answer here
+tidy(model4, se = 'hetero', conf.int = TRUE)
+# Does not change anything
 ```
 
 
@@ -202,7 +233,7 @@ Again, you might be able to do this **without** re-estimating the regression mod
 Why might you want to cluster the standard errors this way?
 
 ```{r}
-# Write your answer here
+tidy(model4, se = 'cluster', conf.int = TRUE)
 ```
 
 
@@ -213,17 +244,23 @@ Do this by modifying your regression command from (11).
 Report your results and discuss your findings.
 
 ```{r}
-# Write your answer here
+model5 <- feols(lnw ~ unsafe:reg + unsafe + reg + llength
+|
+id,
+cluster = ~id,
+data = sasp)
+tidy(model5, conf.int = TRUE)
 ```
 
 
 17. Interpret the results you found in (16).
 
-Write your answer here
+Both unsafe and unsafe:reg are insiginficant, meaning the coefficients can not be stated clearly, although it can be read from the table that providers ask a slightly higher price to regulars.
 
 18. Are the effects you documented *causal*, *descriptive* or *predictive*?  Explain your answer.
 
-Write your answer here
+For the heterogeneity results - definitely descriptive. There’s a bunch of “selection on unobservables”
+issues and potentially omitted variables that would make me nervous about causal interpretation.
 
 Now that you have run a series of regressions, you want to present the results in a way that you could use in a report or a presentation.
 
@@ -232,14 +269,32 @@ You can choose any of the estimates you like to produce the table, but we encour
 The final result should look similar to a regression table you see in academic publications.
 
 ```{r}
-# Write your answer here
+mods <- list(model1, model3, model4, model5)
+msummary(mods,
+coef_omit = "Interc",
+gof_omit = "AIC|BIC|Log|Pseudo|F"
+)
 ```
 
 20. Take your regression estimates and produce a coefficient plot to summarize four of them in one place. 
 You can choose any of the estimates you like to produce the plot, but we encourage you to think about the plot you produce can be used as part of a story you could tell to explain your findings.
 
 ```{r}
-# Write your answer here
+mods <- list(
+model1,
+model3,
+model4, 
+model5
+)
+modelplot(mods,
+coef_omit = "Interc|reg|ll") +
+geom_vline(xintercept = 0,
+alpha = 0.5,
+linetype = "dashed") +
+xlab("Coefficient Estimate + 95% CI") +
+coord_flip() +
+theme_bw()
+
 ```
 
 ## License
